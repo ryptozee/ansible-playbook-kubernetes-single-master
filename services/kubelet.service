@@ -1,0 +1,13 @@
+[Unit]
+Description=Kubernetes Kubelet
+After=containerd.service
+Requires=containerd.service
+
+[Service]
+EnvironmentFile=/opt/kubernetes/cfg/kubelet.conf
+ExecStart=/opt/kubernetes/bin/kubelet $KUBELET_OPTS
+Restart=on-failure
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

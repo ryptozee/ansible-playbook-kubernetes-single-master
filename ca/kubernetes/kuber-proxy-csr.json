@@ -1,0 +1,17 @@
+{
+    "CN": "system:kube-proxy",
+    "hosts": [],
+    "key": {
+      "algo": "rsa",
+      "size": 2048
+    },
+    "names": [
+      {
+        "C": "KE",
+        "L": "Nairobi",
+        "ST": "Nairobi",
+        "O": "system:kube-proxy",
+        "OU": "System"
+      }
+    ]
+  }

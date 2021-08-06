@@ -1,0 +1,20 @@
+{
+    "CN": "system:kube-scheduler",
+    "hosts": [
+      "127.0.0.1",
+      "192.168.1.110"
+    ],
+    "key": {
+      "algo": "rsa",
+      "size": 2048
+    },
+    "names": [
+      {
+        "C": "KE",
+        "L": "Nairobi",
+        "ST": "Nairobi",
+        "O": "system:kube-scheduler",
+        "OU": "System"
+      }
+    ]
+}
