@@ -1,10 +1,10 @@
 KUBE_APISERVER_OPTS="--logtostderr=false \
 --v=4 \
 --log-dir=/opt/kubernetes/log \
---etcd-servers=https://192.168.1.110:2379 \
---bind-address=192.168.1.110 \
+--etcd-servers=https://{{ ansible_host }}:2379 \
+--bind-address={{ ansible_host }} \
 --secure-port=6443 \
---advertise-address=192.168.1.110 \
+--advertise-address={{ ansible_host }} \
 --allow-privileged=true \
 --service-cluster-ip-range=10.0.0.0/24 \
 --enable-admission-plugins=NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota,NodeRestriction \

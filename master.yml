@@ -1,45 +1,248 @@
-- name: Initialize master node(s) of Kubernetes Cluster
+- name: Initialize Control Plane of Kubernetes Cluster
   hosts: master
   become: True
   vars_files:
   - vars.yml
   tasks:
-  - name: Set hostname
-    hostname:
-      name: "{{ inventory_hostname }}"
-    tags: set_hostname
-  - name: Mkdir etcd
-    file:
-      path: /opt/etcd/{bin,cfg,ssl,ca}
-      state: directory
-  - name: Mkdir kubernetes
-    file:
-      path: /opt/kubernetes/{bin,cfg,ssl,ca}
-      state: directory
-  - name: Copy cfssl binary
+  - name: Mkdir etcd and kubernetes
+    shell: |
+      mkdir -p /opt/etcd/{{ item }}
+      mkdir -p /opt/kubernetes/{{ item }}
+    with_items:
+    - ca
+    - cfg
+    - bin
+    - ssl
+    - log
+  - name: Copy cfssl binaries
     copy:
-      src: bin/{{ cfssl_binary }}
-      dest: /usr/local/bin/cfssl
+      src: bin/{{ item.binary }}
+      dest: /usr/local/bin/{{ item.name }}
       mode: u+x
-  - name: Copy cfssl-certinfo binary
-    copy:
-      src: bin/{{ cfssl-certinfo_binary }}
-      dest: /usr/local/bin/cfssl-certinfo
-      mode: u+x
-  - name: Copy cfssljson binary
-    copy:
-      src: bin/{{ cfssljson_binary }}
-      dest: /usr/local/bin/cfssljson
-      mode: u+x
-  - name: extract etcd binary
+    with_items:
+    - { name: 'cfssl', binary: '{{ cfssl_binary }}'}
+    - { name: 'cfssl-certinfo', binary: '{{ cfssl_certinfo_binary }}'}
+    - { name: 'cfssljson', binary: '{{ cfssljson_binary }}'}
+  - name: Extract etcd binary
     unarchive:
-      src: bin/{{ etcd_binary }}
+      src: bin/{{ etcd_gz_file }}
       dest: /root
+  - name: Get etcd directory
+    find:
+      path: /root
+      file_type: directory
+      patterns: 'etcd*'
+    register: etcd_path
   - name: Move etcd binary to /opt/etcd/bin/
     copy:
       remote_src: yes
-      src: 
-      - /root/etcd/etcd
-      - /root/etcd/etcdctl
+      src: '{{ etcd_path.files[0].path }}/{{ item }}'
       dest: /opt/etcd/bin/
-#  - name: Copy
+      mode: u+x
+    with_items:
+    - etcd
+    - etcdctl
+  - name: Extract kubernetes binary
+    unarchive:
+      src: bin/{{ kubernetes_gz_file }}
+      dest: /root
+  - name: Get k8s directory
+    find:
+      path: /root
+      file_type: directory
+      patterns: 'kubernetes*'
+    register: k8s_path
+  - name: Move kubernetes binary to /opt/kubernetes/bin/
+    copy:
+      remote_src: yes
+      src: '{{ k8s_path.files[0].path }}/server/bin/{{ item }}'
+      dest: /opt/kubernetes/bin/
+      mode: u+x
+    with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubelet
+    - kube-proxy
+    - kubectl
+    - apiextensions-apiserver
+    - kube-aggregator
+    - kubeadm
+    - mounter
+  - name: Copy service files
+    copy:
+      src: services/{{ item }}.service
+      dest: /usr/lib/systemd/system/
+    tags:
+    - copy_service
+    with_items:
+    - etcd
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kube-proxy
+    - kubelet
+  - name: Initial etcd configuration file
+    template:
+      src: template/etcd/etcd.conf.j2
+      dest: /opt/etcd/cfg/etcd.conf
+  - name: Initial etcd server-csr.json
+    template:
+      src: template/etcd/server-csr.json.j2
+      dest: /opt/etcd/ca/server-csr.json
+  - name: Copy etcd ca json files
+    copy:
+      src: ca/etcd/{{ item }}.json
+      dest: /opt/etcd/ca/
+    with_items:
+    - ca-config
+    - ca-csr
+  - name: Generate etcd PEM files
+    shell:
+      chdir: /opt/etcd/ca
+      cmd: |
+        cfssl gencert -initca ca-csr.json | cfssljson -bare etcd-ca -
+        cfssl gencert -ca=etcd-ca.pem -ca-key=etcd-ca-key.pem -config=ca-config.json -profile=www server-csr.json | cfssljson -bare etcd-server
+        cp *.pem ../ssl/
+  - name: Enable & Start etcd
+    systemd:
+      name: etcd
+      enabled: yes
+      state: started
+  - name: Initial k8s configuration file
+    template:
+      src: template/kubernetes/{{ item }}.conf.j2
+      dest: /opt/kubernetes/cfg/{{ item }}.conf
+    with_items:
+    - kube-apiserver
+    - kube-proxy
+    - kubelet
+  - name: Copy Controller-Manager Scheduler configuration file
+    copy:
+      src: cfg/kubernetes/{{ item }}
+      dest: /opt/kubernetes/cfg/
+    with_items:
+    - kube-controller-manager.conf
+    - kube-scheduler.conf
+    - kubelet.config
+  - name: Initial kubernetes csr json files
+    template:
+      src: template/kubernetes/{{ item }}-csr.json.j2
+      dest: /opt/kubernetes/ca/{{ item }}-csr.json
+    with_items:
+    - apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubelet-bootstrap
+  - name: Copy ca json files
+    copy:
+      src: ca/kubernetes/{{ item }}.json
+      dest: /opt/kubernetes/ca/{{ item }}.json
+    with_items:
+    - ca-config
+    - ca-csr
+    - kube-proxy-csr
+    - metrics-server-csr
+    - service-account-csr
+  - name: Generate k8s PEM files
+    shell:
+      chdir: /opt/kubernetes/ca
+      cmd: |
+        cfssl gencert -initca ca-csr.json | cfssljson -bare kubernetes-ca -
+        cfssl gencert -ca=kubernetes-ca.pem -ca-key=kubernetes-ca-key.pem -config=ca-config.json -profile=kubernetes apiserver-csr.json | cfssljson -bare apiserver
+        cfssl gencert -ca=kubernetes-ca.pem -ca-key=kubernetes-ca-key.pem -config=ca-config.json -profile=kubernetes kube-controller-manager-csr.json | cfssljson -bare kube-controller-manager
+        cfssl gencert -ca=kubernetes-ca.pem -ca-key=kubernetes-ca-key.pem -config=ca-config.json -profile=kubernetes kube-scheduler-csr.json | cfssljson -bare kube-scheduler
+        cfssl gencert -ca=kubernetes-ca.pem -ca-key=kubernetes-ca-key.pem -config=ca-config.json -profile=kubernetes kube-proxy-csr.json | cfssljson -bare kube-proxy
+        cfssl gencert -ca=kubernetes-ca.pem -ca-key=kubernetes-ca-key.pem -config=ca-config.json -profile=kubernetes kubelet-bootstrap-csr.json | cfssljson -bare kubelet-bootstrap
+        cfssl gencert -ca=kubernetes-ca.pem -ca-key=kubernetes-ca-key.pem -config=ca-config.json -profile=kubernetes admin-csr.json | cfssljson -bare admin
+        cfssl gencert -ca=kubernetes-ca.pem -ca-key=kubernetes-ca-key.pem -config=ca-config.json -profile=kubernetes metrics-server-csr.json | cfssljson -bare metrics-server
+        cfssl gencert -ca=kubernetes-ca.pem -ca-key=kubernetes-ca-key.pem -config=ca-config.json -profile=kubernetes service-account-csr.json | cfssljson -bare service-account
+        cp *.pem ../ssl/
+  - name: Generate essential kubeconfig files
+    shell:
+      chdir: /opt/kubernetes/ca
+      cmd: |
+        export PATH=/opt/kubernetes/bin:$PATH
+        kubectl config set-cluster kubernetes --certificate-authority=kubernetes-ca.pem --embed-certs=true --server=https://{{ ansible_host }}:6443 --kubeconfig={{ item }}.kubeconfig
+        kubectl config set-credentials system:{{ item }} --client-certificate=./{{ item }}.pem --client-key=./{{ item }}-key.pem --embed-certs=true  --kubeconfig={{ item }}.kubeconfig
+        kubectl config set-context default --cluster=kubernetes --user=system:{{ item }} --kubeconfig={{ item }}.kubeconfig
+        kubectl config use-context default --kubeconfig={{ item }}.kubeconfig
+        cp {{ item }}.kubeconfig ../ssl/
+    with_items:
+    - kube-controller-manager
+    - kube-scheduler
+    - kube-proxy
+    - admin
+  - name: Generate token and bootstrap.kubeconfig files
+    shell:
+      chdir: /opt/kubernetes/ca
+      cmd: |
+        export PATH=/opt/kubernetes/bin:$PATH
+        TOKEN=$(head -c 16 /dev/urandom | od -An -t x | tr -d ' ')
+        echo $TOKEN > token
+        cat > /opt/kubernetes/cfg/token.csv <<EOF
+        $TOKEN,kubelet-bootstrap,10001,"system:kubelet-bootstrap"
+        EOF
+        kubectl config set-cluster kubernetes --certificate-authority=kubernetes-ca.pem --embed-certs=true --server=https://{{ ansible_host }}:6443 --kubeconfig=bootstrap.kubeconfig
+        kubectl config set-credentials kubelet-bootstrap --token=$(cat /opt/kubernetes/ca/token) --kubeconfig=bootstrap.kubeconfig
+        kubectl config set-context default --cluster=kubernetes --user=kubelet-bootstrap --kubeconfig=bootstrap.kubeconfig
+        kubectl config use-context default --kubeconfig=bootstrap.kubeconfig
+        cp bootstrap.kubeconfig ../ssl/
+  - name: Mkdir /root/.kube/
+    shell: mkdir -p /root/.kube
+  - name: Generate .kube/config
+    copy:
+      remote_src: yes
+      src: /opt/kubernetes/ssl/admin.kubeconfig
+      dest: /root/.kube/config
+  - name: Enable & Start etcd
+    systemd:
+      name: etcd
+      enabled: yes
+      state: restarted
+  - name: Enable and Start Control Plane of Kubernetes cluster
+    systemd:
+      name: "{{ item }}"
+      enabled: yes
+      state: started
+    with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+  - name: Initial bootstrap
+    shell:
+      cmd: |
+        export PATH=/opt/kubernetes/bin:$PATH
+        kubectl create clusterrolebinding kubelet-bootstrap --clusterrole=system:node-bootstrapper --user=kubelet-bootstrap
+    tags:
+    - init_bootsrtap
+  - name: Enable and Start Worker Nodes
+    systemd:
+      name: "{{ item }}"
+      enabled: yes
+      state: started
+    with_items:
+    - kubelet
+    - kube-proxy
+    tags:
+    - start_worker_plane
+  - name: Fetch kubeconfig files to control machine
+    fetch:
+      src: /opt/kubernetes/ssl/{{ item }}
+      dest: ca/
+    with_items:
+    - bootstrap.kubeconfig
+    - kube-proxy.kubeconfig
+    - kubernetes-ca.pem
+    - admin.kubeconfig
+    tags:
+    - fetch_remote_kubeconfig
+  - name: Clean resources
+    file:
+      path: "{{ item }}"
+      state: absent
+    with_items:
+    - "{{ etcd_path.files[0].path }}"
+    - "{{ k8s_path.files[0].path }}"
+    tags:
+    - clean_resources

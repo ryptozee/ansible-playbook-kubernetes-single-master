@@ -1,7 +1,7 @@
 KUBELET_OPTS="--logtostderr=false \
 --v=4 \
 --log-dir=/opt/kubernetes/log \
---hostname-override=istio-master \
+--hostname-override={{ inventory_hostname }} \
 --kubeconfig=/opt/kubernetes/ssl/kubelet.kubeconfig \
 --bootstrap-kubeconfig=/opt/kubernetes/ssl/bootstrap.kubeconfig \
 --config=/opt/kubernetes/cfg/kubelet.config \
@@ -9,4 +9,4 @@ KUBELET_OPTS="--logtostderr=false \
 --network-plugin=cni \
 --container-runtime=remote \
 --container-runtime-endpoint=unix:///run/containerd/containerd.sock \
---pod-infra-container-image=harbor.ge-tech.cc:6443/kubernetes/pause:3.3"
+--pod-infra-container-image={{ pause_image_url }}"

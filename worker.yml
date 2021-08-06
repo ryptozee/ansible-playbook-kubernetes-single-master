@@ -1,7 +1,83 @@
 - name: Initialize work node(s) of Kubernetes Cluster
   hosts: worker
   become: true
+  vars_files:
+  - vars.yml
   tasks:
-  - name: Set hostname
-    hostname:
-      name: "{{ inventory_hostname }}"
+  - name: Mkdir etcd and kubernetes
+    shell: |
+      mkdir -p /opt/kubernetes/{{ item }}
+    with_items:
+    - cfg
+    - bin
+    - ssl
+    - log
+  - name: Extract kubernetes binary
+    unarchive:
+      src: bin/{{ kubernetes_gz_file }}
+      dest: /root
+  - name: Get k8s directory
+    find:
+      path: /root
+      file_type: directory
+      patterns: 'kubernetes*'
+    register: k8s_path
+  - name: Move kubernetes binary to /opt/kubernetes/bin/
+    copy:
+      remote_src: yes
+      src: '{{ k8s_path.files[0].path }}/server/bin/{{ item }}'
+      dest: /opt/kubernetes/bin/
+      mode: u+x
+    with_items:
+    - kubelet
+    - kube-proxy
+  - name: Copy service files
+    copy:
+      src: services/{{ item }}.service
+      dest: /usr/lib/systemd/system/
+    with_items:
+    - kube-proxy
+    - kubelet
+    tags:
+    - copy_service
+  - name: Initial k8s configuration file
+    template:
+      src: template/kubernetes/{{ item }}.conf.j2
+      dest: /opt/kubernetes/cfg/{{ item }}.conf
+    with_items:
+    - kube-proxy
+    - kubelet
+  - name: Copy kubelet configuration file
+    copy:
+      src: cfg/kubernetes/{{ item }}
+      dest: /opt/kubernetes/cfg/
+    with_items:
+    - kubelet.config
+  - name: Copy essential files from control machine
+    copy:
+      src: ca/{{ master_node }}/opt/kubernetes/ssl/{{ item }}
+      dest: /opt/kubernetes/ssl/
+    with_items:
+    - bootstrap.kubeconfig
+    - kube-proxy.kubeconfig
+    - kubernetes-ca.pem
+    tags:
+    - get_remote_kubeconfig
+  - name: Enable and Start Worker Nodes
+    systemd:
+      name: "{{ item }}"
+      enabled: yes
+      state: started
+    with_items:
+    - kubelet
+    - kube-proxy
+    tags:
+    - start_worker_plane
+  - name: Clean resources
+    file:
+      path: "{{ item }}"
+      state: absent
+    with_items:
+    - "{{ k8s_path.files[0].path }}"
+    tags:
+    - clean_resources

@@ -1,0 +1,5 @@
+bin/*
+cfg/containerd
+ca/*
+!ca/etcd
+!ca/kubernetes
