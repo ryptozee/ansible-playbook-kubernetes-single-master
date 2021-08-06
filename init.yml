@@ -1,5 +1,5 @@
-- name: Configure master node for Kubernetes
-  hosts: master
+- name: Configure nodes initialization for Kubernetes cluster
+  hosts: nodes
   become: True
   tasks:
   - name: show hostname
@@ -76,3 +76,6 @@
     shell: ufw disable
   - name: Reboot
     reboot:
+
+#- master.yml
+#- worker.yml

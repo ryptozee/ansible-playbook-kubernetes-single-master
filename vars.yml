@@ -1,0 +1,7 @@
+etcd_binary: etcd-v3.4.16-linux-arm64.tar.gz
+kubernetes_binary: kubernetes-server-linux-amd64.tar.gz
+cfssl_binary: cfssl_1.4.1_linux_amd64
+cfssl-certinfo_binary: cfssl-certinfo_1.4.1_linux_amd64
+cfssljson_binary: cfssljson_1.4.1_linux_amd64
+
+master-node-name: ansible-master

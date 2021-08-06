@@ -1,0 +1,45 @@
+- name: Initialize master node(s) of Kubernetes Cluster
+  hosts: master
+  become: True
+  vars_files:
+  - vars.yml
+  tasks:
+  - name: Set hostname
+    hostname:
+      name: "{{ inventory_hostname }}"
+    tags: set_hostname
+  - name: Mkdir etcd
+    file:
+      path: /opt/etcd/{bin,cfg,ssl,ca}
+      state: directory
+  - name: Mkdir kubernetes
+    file:
+      path: /opt/kubernetes/{bin,cfg,ssl,ca}
+      state: directory
+  - name: Copy cfssl binary
+    copy:
+      src: bin/{{ cfssl_binary }}
+      dest: /usr/local/bin/cfssl
+      mode: u+x
+  - name: Copy cfssl-certinfo binary
+    copy:
+      src: bin/{{ cfssl-certinfo_binary }}
+      dest: /usr/local/bin/cfssl-certinfo
+      mode: u+x
+  - name: Copy cfssljson binary
+    copy:
+      src: bin/{{ cfssljson_binary }}
+      dest: /usr/local/bin/cfssljson
+      mode: u+x
+  - name: extract etcd binary
+    unarchive:
+      src: bin/{{ etcd_binary }}
+      dest: /root
+  - name: Move etcd binary to /opt/etcd/bin/
+    copy:
+      remote_src: yes
+      src: 
+      - /root/etcd/etcd
+      - /root/etcd/etcdctl
+      dest: /opt/etcd/bin/
+#  - name: Copy
