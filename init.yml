@@ -8,21 +8,21 @@
     community.general.timezone:
       name: Asia/Shanghai
   - name: Enable NTP
-    ansible.builtin.service:
+    service:
       name: ntp
       enabled: yes
       state: started
-  - name: timedatectl set-ntp yes
+  - name: Timedatectl set-ntp yes
     shell: /usr/bin/timedatectl set-ntp yes
     tags:
     - enable_ntp_control
-  - name: apt update
+  - name: Apt update
     apt:
       update_cache: True
-  - name: apt upgrade
+  - name: Apt upgrade
     apt:
       upgrade: full
-  - name: install dependencies
+  - name: Install dependencies
     apt:
       pkg:
       - apt-transport-https
@@ -30,10 +30,10 @@
       - curl
       - gnupg-agent
       - software-properties-common
-  - name: install containerd
+  - name: Install containerd
     apt:
       name: containerd
-  - name: install ipvs dependencies
+  - name: Install ipvs dependencies
     apt:
       pkg: 
       - conntrack
@@ -44,17 +44,33 @@
       - ipset
       - ipvsadm
       - tgt
-  - name: load overlay module
+  - name: Load overlay module
     shell: modprobe overlay
-  - name: load br_netfilter module
+  - name: Load br_netfilter module
     shell: modprobe br_netfilter
-  - name: copy kubernetes cri configuration file
+  - name: Copy kubernetes cri configuration file
     copy: 
       src: cfg/99-kubernetes-cri.conf
       dest: /etc/sysctl.d/99-kubernetes-cri.conf
-  - name: load kubernetes-cri.conf
+  - name: Load kubernetes-cri.conf
     shell: sysctl --system
-  - name: import ipvs modules to /etc/modules
+  - name: Import ipvs modules to /etc/modules
     shell: 'ls /lib/modules/$(uname -r)/kernel/net/netfilter/ipvs|grep -o "^[^.]*" >> /etc/modules'
   - name: Enable nf_conntrack_ipv4
     shell: echo nf_conntrack_ipv4 >> /etc/modules
+  - name: Enable tgt
+    systemd:
+      name: tgt
+      enabled: yes
+      state: started
+  - name: Enable iscsid
+    systemd:
+      name: iscsid
+      enabled: yes
+      state: started
+  - name: Disable swap
+    shell: swapoff -a && sed -ri 's/.*swap.*/#&/' /etc/fstab
+  - name: Disable ufw
+    shell: ufw disable
+  - name: Reboot
+    reboot:
