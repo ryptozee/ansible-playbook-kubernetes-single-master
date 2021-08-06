@@ -4,18 +4,6 @@
   tasks:
   - name: show hostname
     command: hostname
-  - name: Set timezone to Asia/Shanghai
-    community.general.timezone:
-      name: Asia/Shanghai
-  - name: Enable NTP
-    service:
-      name: ntp
-      enabled: yes
-      state: started
-  - name: Timedatectl set-ntp yes
-    shell: /usr/bin/timedatectl set-ntp yes
-    tags:
-    - enable_ntp_control
   - name: Apt update
     apt:
       update_cache: True
@@ -30,6 +18,7 @@
       - curl
       - gnupg-agent
       - software-properties-common
+      - ntp
   - name: Install containerd
     apt:
       name: containerd
@@ -44,6 +33,19 @@
       - ipset
       - ipvsadm
       - tgt
+  - name: Set timezone to Africa/Nairobi
+    community.general.timezone:
+      name: Africa/Nairobi
+  - name: Enable NTP
+    systemd:
+      name: ntp
+      enabled: yes
+      state: started
+  # If ntp.service has started, no need to be set by timedatectl
+  #- name: Timedatectl set-ntp true
+  #  shell: /usr/bin/timedatectl set-ntp true
+  #  tags:
+  #  - enable_ntp_control
   - name: Load overlay module
     shell: modprobe overlay
   - name: Load br_netfilter module
